@@ -71,7 +71,10 @@ class MainActivity : AppCompatActivity() {
             val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(viewFinder.surfaceProvider)
                 }
+            // eine Idee die ich hier getestet hab:
+            // Mit ImageAnalysis.builder...
 
+            // und dann unten bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageanalysis)
             cameraProvider.unbindAll()
 
             cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview)
