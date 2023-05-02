@@ -2,25 +2,38 @@ package com.example.camerav4
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.camerav4.databinding.ActivityMainBinding
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
-
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity()  {
     private lateinit var binding: ActivityMainBinding
+    private lateinit var cameraExecutor: ExecutorService
+    private var filterToggle = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
-        val view = binding.root
-        setContentView(view)
+        setContentView(binding.root)
+
+        cameraExecutor = Executors.newSingleThreadExecutor()
+        binding.filterButton.setOnClickListener {
+            toggleFilter()
+        }
+
 
         if (isPermissionGranted()) {
             openCamera()
@@ -31,7 +44,19 @@ class MainActivity : AppCompatActivity() {
             )
         }
     }
+    private fun toggleFilter() {
+        filterToggle = !filterToggle
 
+        val matrix = ColorMatrix()
+        matrix.setSaturation(0F)
+
+        if (filterToggle) {
+            binding.imageView.colorFilter = ColorMatrixColorFilter(matrix)
+        } else {
+            binding.imageView.colorFilter = null
+        }
+        Log.d("myapp", "Toggling filter to: $filterToggle")
+    }
     private fun isPermissionGranted(): Boolean {
         return ContextCompat.checkSelfPermission(
             this@MainActivity, Manifest.permission.CAMERA
@@ -63,22 +88,50 @@ class MainActivity : AppCompatActivity() {
         Log.w("myapp", "Opening Camera!")
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
         cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-            val viewFinder = binding.viewFinder
 
-            val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(viewFinder.surfaceProvider)
+            val imageAnalyzer = ImageAnalysis.Builder()
+                .build()
+                .also {
+                    it.setAnalyzer(cameraExecutor, ImageAnalyzer { bitmap ->
+                        runOnUiThread{
+                            binding.imageView.setImageBitmap(bitmap)
+                        }
+                    })
                 }
-            // eine Idee die ich hier getestet hab:
-            // Mit ImageAnalysis.builder...
 
-            // und dann unten bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageanalysis)
-            cameraProvider.unbindAll()
+            try {
+                cameraProvider.unbindAll()
 
-            cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+                cameraProvider.bindToLifecycle(
+                    this,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    imageAnalyzer
+                )
+
+            } catch (exc: Exception) {
+                Log.e("myapp", "Use case binding failed", exc)
+            }
 
         }, ContextCompat.getMainExecutor(this))
     }
+    private class ImageAnalyzer(private val listener: (Bitmap) -> Unit) : ImageAnalysis.Analyzer {
+
+        override fun analyze(image: ImageProxy) {
+
+            val currentBitmap = image.toBitmap()
+            val rotatedBitmap = currentBitmap.rotate(90f)
+
+            listener(rotatedBitmap)
+            image.close()
+        }
+        fun Bitmap.rotate(fl: Float): Bitmap {
+
+            val matrix = Matrix().apply { postRotate(fl) }
+            return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+
+        }
+    }
+
 }

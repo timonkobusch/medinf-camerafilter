@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">CameraV4</string>
+    <string name="filter_button">Filter Switch</string>
 </resources>
